@@ -1,5 +1,5 @@
 """
-UI version of diff checker.py
+UI version of compareX.py
 Keeps the original comparison logic and adds:
   - Drag-and-drop file selection for the two Excel/CSV files
   - Toggle checkboxes to include/exclude columns from comparison
