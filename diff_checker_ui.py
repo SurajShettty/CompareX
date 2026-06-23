@@ -147,7 +147,7 @@ def compare_by_similarity(df1, df2, all_cols, row_match_threshold):
 class DiffCheckerUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Excel Diff Checker")
+        self.root.title("CompareX")
         self.root.geometry("900x700")
         self.root.minsize(800, 600)
 
@@ -174,7 +174,7 @@ class DiffCheckerUI:
 
         self.file1_lbl = ttk.Label(
             file_frame,
-            text="Drop OLD / PROD file here\nor click to browse",
+            text="Drop File1 or click to browse",
             style="Drop.TLabel",
             wraplength=350,
             justify="center"
@@ -184,7 +184,7 @@ class DiffCheckerUI:
 
         self.file2_lbl = ttk.Label(
             file_frame,
-            text="Drop NEW / DEV file here\nor click to browse",
+            text="Drop File2 or click to browse",
             style="Drop.TLabel",
             wraplength=350,
             justify="center"
