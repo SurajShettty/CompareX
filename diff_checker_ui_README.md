@@ -23,7 +23,8 @@ This is the UI version of `diff checker.py`. It keeps the exact same comparison 
 - Supported file formats: `.xlsx`, `.xls`, `.csv`
 - The `created_timestamp` column is unchecked by default (matches the original script)
 - The output report highlights:
-  - **Yellow** — modified cells
+  - **Yellow** — modified cells (values are shown as `old -> new`)
   - **Green** — added rows
   - **Red** — deleted rows
+- After a successful comparison, click **Open output folder** to jump straight to the saved report
 - If drag-and-drop does not work, make sure `tkinterdnd2` is installed (it is already included in the local `.venv`)

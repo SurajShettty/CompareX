@@ -7,7 +7,9 @@ Keeps the original comparison logic and adds:
 """
 
 import os
+import shutil
 import sys
+import tempfile
 import threading
 import tkinter as tk
 from difflib import SequenceMatcher
@@ -253,9 +255,35 @@ class DiffCheckerUI:
         self.summary_lbl = ttk.Label(main_frame, text="", foreground="#333333", justify="left")
         self.summary_lbl.pack(fill="x", pady=(5, 0))
 
+        self.actions_frame = ttk.Frame(main_frame)
+        self.actions_frame.pack(fill="x", pady=(5, 0))
+        self.open_folder_btn = ttk.Button(
+            self.actions_frame,
+            text="Open output folder",
+            command=self.open_output_folder,
+            state="disabled"
+        )
+        self.open_folder_btn.pack(side="left")
+        self._last_output_path = ""
+
     # ---------------------------
     # Helpers
     # ---------------------------
+
+    def open_output_folder(self):
+        if not self._last_output_path or not os.path.exists(self._last_output_path):
+            self.set_status("Output file not found.", is_error=True)
+            return
+        folder = os.path.dirname(os.path.abspath(self._last_output_path))
+        try:
+            if sys.platform == "win32":
+                os.startfile(folder)
+            elif sys.platform == "darwin":
+                os.system(f'open "{folder}"')
+            else:
+                os.system(f'xdg-open "{folder}"')
+        except Exception as e:
+            self.set_status(f"Could not open folder: {e}", is_error=True)
 
     def set_status(self, text, is_error=False):
         color = "#c00000" if is_error else "#555555"
@@ -432,6 +460,11 @@ class DiffCheckerUI:
 
     def _compare_worker(self, df1, df2, included_cols, threshold, output_path):
         try:
+            # Make sure the destination folder exists before writing
+            output_dir = os.path.dirname(output_path)
+            if output_dir and not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
             # Build the final column list (df2 order first, then df1-only columns)
             all_cols = [col for col in df2.columns if col in included_cols]
             for col in df1.columns:
@@ -446,45 +479,70 @@ class DiffCheckerUI:
                 df1, df2, all_cols, threshold
             )
 
-            output_df.to_excel(output_path, sheet_name="Comparison", index=False)
+            # Write to a temporary file first so an open/locked target file
+            # cannot leave a partially-written report behind.
+            fd, temp_path = tempfile.mkstemp(
+                suffix=".xlsx",
+                dir=output_dir or ".",
+                prefix="comparison_report_"
+            )
+            os.close(fd)
 
-            wb = load_workbook(output_path)
-            ws = wb["Comparison"]
+            try:
+                output_df.to_excel(temp_path, sheet_name="Comparison", index=False)
 
-            yellow = PatternFill(fill_type="solid", start_color="FFEB9C")
-            green = PatternFill(fill_type="solid", start_color="C6EFCE")
-            red = PatternFill(fill_type="solid", start_color="FFC7CE")
+                wb = load_workbook(temp_path)
+                ws = wb["Comparison"]
 
-            col_map = {col: idx + 1 for idx, col in enumerate(output_df.columns)}
+                yellow = PatternFill(fill_type="solid", start_color="FFEB9C")
+                green = PatternFill(fill_type="solid", start_color="C6EFCE")
+                red = PatternFill(fill_type="solid", start_color="FFC7CE")
 
-            for row, col in modified_cells:
-                ws.cell(row + 2, col_map[col]).fill = yellow
+                col_map = {col: idx + 1 for idx, col in enumerate(output_df.columns)}
 
-            for row in added_rows:
-                for col in range(1, ws.max_column + 1):
-                    ws.cell(row + 2, col).fill = green
+                for row, col in modified_cells:
+                    ws.cell(row + 2, col_map[col]).fill = yellow
 
-            for row in deleted_rows:
-                for col in range(1, ws.max_column + 1):
-                    ws.cell(row + 2, col).fill = red
+                for row in added_rows:
+                    for col in range(1, ws.max_column + 1):
+                        ws.cell(row + 2, col).fill = green
 
-            ws.freeze_panes = "A2"
-            wb.save(output_path)
+                for row in deleted_rows:
+                    for col in range(1, ws.max_column + 1):
+                        ws.cell(row + 2, col).fill = red
+
+                ws.freeze_panes = "A2"
+                wb.save(temp_path)
+
+                # Move the completed report to the requested path
+                shutil.move(temp_path, output_path)
+            except Exception:
+                # Clean up the temporary file on any error
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                raise
+
+            # Count distinct rows that contain at least one modified cell
+            modified_rows = len({row for row, _ in modified_cells})
 
             self.root.after(0, lambda: self._on_comparison_success(
-                output_path, len(modified_cells), len(added_rows), len(deleted_rows)
+                output_path, modified_rows, len(added_rows), len(deleted_rows)
             ))
         except Exception as e:
             self.root.after(0, lambda: self._on_comparison_error(str(e)))
 
     def _on_comparison_success(self, output_path, modified, added, deleted):
         self.compare_btn.config(state="normal")
+        self._last_output_path = output_path
+        self.open_folder_btn.config(state="normal")
         self.set_status(f"Report generated: {output_path}")
         self.update_summary(modified=modified, added=added, deleted=deleted, output_path=output_path)
         messagebox.showinfo("Comparison complete", f"Report saved to:\n{output_path}")
 
     def _on_comparison_error(self, error_msg):
         self.compare_btn.config(state="normal")
+        self.open_folder_btn.config(state="disabled")
+        self._last_output_path = ""
         self.set_status(f"Error: {error_msg}", is_error=True)
         messagebox.showerror("Comparison failed", error_msg)
 
